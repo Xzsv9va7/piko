@@ -14,6 +14,8 @@ import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.instructions
 import app.morphe.patcher.opcode
+import app.morphe.patcher.patch.BytecodePatchContext
+import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import com.android.tools.smali.dexlib2.Opcode
 
@@ -24,6 +26,36 @@ private object CustomiseExploreTabsFingerprint : Fingerprint(
             opcode(Opcode.NEW_INSTANCE),
         ),
 )
+
+private object ExploreTabLayoutOnLayoutFingerprint : Fingerprint(
+    definingClass = "Lcom/google/android/material/tabs/TabLayout;",
+    name = "onLayout",
+)
+
+private object ExploreTabLayoutAttachFingerprint : Fingerprint(
+    definingClass = "Lcom/google/android/material/tabs/TabLayout;",
+    name = "onAttachedToWindow",
+)
+
+context(BytecodePatchContext)
+private inline fun applyOptionalHook(block: () -> Unit) {
+    try {
+        block()
+    } catch (_: PatchException) {
+    }
+}
+
+context(BytecodePatchContext)
+private fun hookTabLayout(fingerprint: Fingerprint) {
+    val method = fingerprint.method
+    val returnVoid = method.instructions.last { it.opcode == Opcode.RETURN_VOID }.location.index
+    method.addInstructions(
+        returnVoid,
+        """
+        invoke-static {p0}, $CUSTOMISE_DESCRIPTOR;->onExploreTabLayoutLayout(Landroid/view/View;)V
+        """.trimIndent(),
+    )
+}
 
 @Suppress("unused")
 val customiseExploreTabsPatch =
@@ -49,5 +81,8 @@ val customiseExploreTabsPatch =
                 """.trimIndent(),
             )
             enableSettings("exploreTabCustomisation")
+
+            applyOptionalHook { hookTabLayout(ExploreTabLayoutOnLayoutFingerprint) }
+            applyOptionalHook { hookTabLayout(ExploreTabLayoutAttachFingerprint) }
         }
     }

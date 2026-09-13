@@ -30,6 +30,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import app.morphe.extension.crimera.PikoUtils;
+import app.morphe.extension.twitter.patches.customise.Customise;
 
 public class TimelineEntry {
     public static final boolean hideAds;
@@ -78,7 +79,7 @@ public class TimelineEntry {
             return true;
         }
         if (entryId2.equals("Guide") || entryId2.startsWith("semantic_core")) {
-            return false;
+            return Customise.hideAllExploreTabs();
         }
         if (entryId2.equals("conversationthread") && split.length == 3 && hideAds) {
             return true;
