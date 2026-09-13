@@ -13,6 +13,7 @@ import app.morphe.extension.twitter.Pref;
 import app.morphe.extension.crimera.PikoUtils;
 import com.twitter.model.json.search.JsonTypeaheadResponse;
 import app.morphe.extension.twitter.entity.Debug;
+import app.morphe.extension.twitter.patches.TimelineEntry;
 
 @SuppressWarnings("unused")
 public class Customise {
@@ -211,6 +212,7 @@ public class Customise {
 
     public static JsonTypeaheadResponse typeAheadResponse(JsonTypeaheadResponse jsonTypeaheadResponse){
         try{
+            TimelineEntry.filterPromotedFromTypeahead(jsonTypeaheadResponse);
             ArrayList choices = Pref.customSearchTypeAhead();
             if(!choices.isEmpty())
             {

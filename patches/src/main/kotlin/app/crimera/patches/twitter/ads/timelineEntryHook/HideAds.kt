@@ -9,12 +9,16 @@ package app.crimera.patches.twitter.ads.timelineEntryHook
 import app.crimera.patches.twitter.misc.settings.settingsPatch
 import app.crimera.patches.twitter.utils.Constants
 import app.crimera.patches.twitter.utils.Constants.COMPATIBILITY_X
+import app.crimera.patches.twitter.utils.Constants.PATCHES_DESCRIPTOR
 import app.crimera.patches.twitter.utils.enableSettings
 import app.crimera.patches.twitter.utils.flagSettings
 import app.morphe.patcher.Fingerprint
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.instructions
+import app.morphe.patcher.patch.BytecodePatchContext
+import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patcher.util.smali.ExternalLabel
 import com.android.tools.smali.dexlib2.Opcode
@@ -25,6 +29,45 @@ private object HidePromotedTrendFingerprint : Fingerprint(
     definingClass = "Lcom/twitter/model/json/timeline/urt/JsonTimelineTrend;",
     returnType = "Ljava/lang/Object",
 )
+
+private object JsonTimelineTrendMapperFingerprint : Fingerprint(
+    definingClass = "Lcom/twitter/model/json/timeline/urt/JsonTimelineTrend\$\$JsonObjectMapper;",
+    name = "parse",
+    returnType = "Ljava/lang/Object",
+)
+
+private object JsonTimelineTweetMapperFingerprint : Fingerprint(
+    definingClass = "Lcom/twitter/model/json/timeline/urt/JsonTimelineTweet\$\$JsonObjectMapper;",
+    name = "parse",
+    returnType = "Ljava/lang/Object",
+)
+
+private object JsonTypeaheadResponseMapperFingerprint : Fingerprint(
+    definingClass = "JsonTypeaheadResponse\$\$JsonObjectMapper;",
+    name = "parse",
+    returnType = "Ljava/lang/Object",
+)
+
+context(BytecodePatchContext)
+private inline fun applyOptionalHook(block: () -> Unit) {
+    try {
+        block()
+    } catch (_: PatchException) {
+    }
+}
+
+context(BytecodePatchContext)
+private fun hookParse(fingerprint: Fingerprint, methodName: String) {
+    val method = fingerprint.method
+    val returnObj = method.instructions.last { it.opcode == Opcode.RETURN_OBJECT }.location.index
+    method.addInstructions(
+        returnObj,
+        """
+        invoke-static {p1}, $PATCHES_DESCRIPTOR/TimelineEntry;->$methodName(Ljava/lang/Object;)Ljava/lang/Object;
+        move-result-object p1
+        """.trimIndent(),
+    )
+}
 
 @Suppress("unused")
 val hideAds =
@@ -63,5 +106,10 @@ val hideAds =
                 """.trimIndent(),
                 ExternalLabel("cond_1212", return_obj),
             )
+
+            // Search/Explore ads often skip the domain-model hook above. Drop them at parse time.
+            applyOptionalHook { hookParse(JsonTimelineTrendMapperFingerprint, "hideIfPromoted") }
+            applyOptionalHook { hookParse(JsonTimelineTweetMapperFingerprint, "hideIfPromoted") }
+            applyOptionalHook { hookParse(JsonTypeaheadResponseMapperFingerprint, "filterPromotedFromTypeahead") }
         }
     }
