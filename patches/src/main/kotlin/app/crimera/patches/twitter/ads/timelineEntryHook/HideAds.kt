@@ -60,11 +60,12 @@ context(BytecodePatchContext)
 private fun hookParse(fingerprint: Fingerprint, methodName: String) {
     val method = fingerprint.method
     val returnObj = method.instructions.last { it.opcode == Opcode.RETURN_OBJECT }.location.index
+    val returnReg = method.getInstruction<OneRegisterInstruction>(returnObj).registerA
     method.addInstructions(
         returnObj,
         """
-        invoke-static {p1}, $PATCHES_DESCRIPTOR/TimelineEntry;->$methodName(Ljava/lang/Object;)Ljava/lang/Object;
-        move-result-object p1
+        invoke-static {v$returnReg}, $PATCHES_DESCRIPTOR/TimelineEntry;->$methodName(Ljava/lang/Object;)Ljava/lang/Object;
+        move-result-object v$returnReg
         """.trimIndent(),
     )
 }

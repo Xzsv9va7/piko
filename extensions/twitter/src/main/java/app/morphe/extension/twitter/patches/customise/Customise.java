@@ -175,17 +175,21 @@ public class Customise {
             if (count < 2) {
                 return false;
             }
-            CharSequence second = tabText(tabLayout, 1);
-            if (second == null) {
-                return count >= 3;
+            for (int i = 0; i < count; i++) {
+                CharSequence title = tabText(tabLayout, i);
+                if (title == null) {
+                    continue;
+                }
+                String text = title.toString();
+                if (text.equals(str("guide_tab_title_trending"))
+                    || text.equals(str("guide_tab_title_fun"))
+                    || text.equals(str("guide_tab_title_news"))
+                    || text.equals(str("guide_tab_title_sports"))
+                    || text.equals(str("guide_tab_title_entertainment"))) {
+                    return true;
+                }
             }
-            String text = second.toString();
-            return text.equals(str("guide_tab_title_trending"))
-                || text.equals(str("guide_tab_title_fun"))
-                || text.equals(str("guide_tab_title_news"))
-                || text.equals(str("guide_tab_title_sports"))
-                || text.equals(str("guide_tab_title_entertainment"))
-                || count >= 3;
+            return false;
         } catch (Exception e) {
             return false;
         }
