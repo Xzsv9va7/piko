@@ -8,11 +8,19 @@ package app.morphe.extension.twitter.patches.customise;
 
 import java.util.*;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
+import android.view.View;
+import android.view.ViewGroup;
+
+import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.twitter.Pref;
 import app.morphe.extension.crimera.PikoUtils;
 import com.twitter.model.json.search.JsonTypeaheadResponse;
 import app.morphe.extension.twitter.entity.Debug;
+import app.morphe.extension.twitter.patches.TimelineEntry;
+
+import static app.morphe.extension.shared.StringRef.str;
 
 @SuppressWarnings("unused")
 public class Customise {
@@ -131,6 +139,105 @@ public class Customise {
         return inp;
     }
 
+    public static boolean hideAllExploreTabs() {
+        try {
+            ArrayList<?> choices = Pref.customExploreTabs();
+            if (choices.isEmpty()) {
+                return false;
+            }
+            String[] all = ResourceUtils.getStringArray("piko_array_exploretabs_val");
+            if (all == null || all.length == 0) {
+                return false;
+            }
+            for (String id : all) {
+                if (!choices.contains(id)) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            logger(e);
+            return false;
+        }
+    }
+
+    public static void onExploreTabLayoutLayout(View tabLayout) {
+        if (tabLayout == null || !hideAllExploreTabs()) {
+            return;
+        }
+        tabLayout.post(() -> hideExploreTabsChrome(tabLayout));
+    }
+
+    private static boolean isExploreTabLayout(View tabLayout) {
+        try {
+            Method getTabCount = tabLayout.getClass().getMethod("getTabCount");
+            int count = (int) getTabCount.invoke(tabLayout);
+            if (count < 2) {
+                return false;
+            }
+            for (int i = 0; i < count; i++) {
+                CharSequence title = tabText(tabLayout, i);
+                if (title == null) {
+                    continue;
+                }
+                String text = title.toString();
+                if (text.equals(str("guide_tab_title_trending"))
+                    || text.equals(str("guide_tab_title_fun"))
+                    || text.equals(str("guide_tab_title_news"))
+                    || text.equals(str("guide_tab_title_sports"))
+                    || text.equals(str("guide_tab_title_entertainment"))) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static CharSequence tabText(View tabLayout, int index) {
+        try {
+            Object tab = tabLayout.getClass().getMethod("getTabAt", int.class).invoke(tabLayout, index);
+            if (tab == null) {
+                return null;
+            }
+            try {
+                return (CharSequence) tab.getClass().getMethod("getText").invoke(tab);
+            } catch (Exception ignored) {
+                Field field = tab.getClass().getDeclaredField("c");
+                field.setAccessible(true);
+                return (CharSequence) field.get(tab);
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static void hideExploreTabsChrome(View tabLayout) {
+        try {
+            if (!isExploreTabLayout(tabLayout)) {
+                return;
+            }
+            tabLayout.setVisibility(View.GONE);
+            if (!(tabLayout.getParent() instanceof ViewGroup parent)) {
+                return;
+            }
+            boolean seenTabs = false;
+            for (int i = 0; i < parent.getChildCount(); i++) {
+                View child = parent.getChildAt(i);
+                if (child == tabLayout) {
+                    seenTabs = true;
+                    continue;
+                }
+                if (seenTabs) {
+                    child.setVisibility(View.GONE);
+                }
+            }
+        } catch (Exception e) {
+            logger(e);
+        }
+    }
+
     public static ArrayList exploretabs(ArrayList inp){
         try{
             ArrayList choices = Pref.customExploreTabs();
@@ -151,6 +258,9 @@ public class Customise {
                 if (id!=null && choices.contains(id)){
                     arr.remove(obj);
                 }
+            }
+            if (arr.isEmpty() || hideAllExploreTabs()) {
+                return new ArrayList<>();
             }
             return arr;
 
@@ -211,6 +321,7 @@ public class Customise {
 
     public static JsonTypeaheadResponse typeAheadResponse(JsonTypeaheadResponse jsonTypeaheadResponse){
         try{
+            TimelineEntry.filterPromotedFromTypeahead(jsonTypeaheadResponse);
             ArrayList choices = Pref.customSearchTypeAhead();
             if(!choices.isEmpty())
             {

@@ -22,9 +22,15 @@ import app.morphe.extension.twitter.Pref;
 import app.morphe.extension.twitter.settings.SettingsStatus;
 import app.morphe.extension.twitter.entity.Video;
 
-import java.util.List;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import app.morphe.extension.crimera.PikoUtils;
+import app.morphe.extension.twitter.patches.customise.Customise;
 
 public class TimelineEntry {
     public static final boolean hideAds;
@@ -43,56 +49,209 @@ public class TimelineEntry {
         hideTodaysNews = (Pref.hideTodaysNews() && SettingsStatus.hideTodaysNews);
     }
 
+    private static boolean isAdEntryId(String entryId) {
+        String id = entryId.toLowerCase(Locale.ROOT);
+        return id.contains("promoted")
+            || id.contains("rtb")
+            || id.contains("advertiser")
+            || id.contains("search-ad")
+            || id.contains("searchad")
+            || id.contains("brand-takeover")
+            || id.contains("timeline-spotlight")
+            || id.startsWith("superhero")
+            || id.startsWith("eventsummary")
+            || id.startsWith("main-event-")
+            || id.equals("pivot")
+            || id.startsWith("pivot-");
+    }
+
     private static boolean isEntryIdRemove(String entryId) {
+        if (entryId == null || entryId.isEmpty()) {
+            return false;
+        }
         String[] split = entryId.split("-");
         String entryId2 = split[0];
-        if (!entryId2.equals("cursor") && !entryId2.equals("Guide") && !entryId2.startsWith("semantic_core")) {
-            if (entryId.contains("promoted") || (entryId2.equals("conversationthread") && split.length == 3) && hideAds) {
-                return true;
+        if (entryId2.equals("cursor")) {
+            return false;
+        }
+        // Explore/search items use Guide- and semantic_core- prefixes; still drop ads.
+        if (hideAds && isAdEntryId(entryId)) {
+            return true;
+        }
+        if (entryId2.equals("Guide") || entryId2.startsWith("semantic_core")) {
+            return Customise.hideAllExploreTabs();
+        }
+        if (entryId2.equals("conversationthread") && split.length == 3 && hideAds) {
+            return true;
+        }
+        if (entryId2.startsWith("tweetdetail") && hideDetailedPosts) {
+            return true;
+        }
+        if (entryId2.equals("bookmarked") && hideRBMK) {
+            return true;
+        }
+        if (entryId.startsWith("community-to-join") && hideCTJ) {
+            return true;
+        }
+        if (entryId.startsWith("who-to-follow") && hideWTF) {
+            return true;
+        }
+        if (entryId.startsWith("who-to-subscribe") && hideCTS) {
+            return true;
+        }
+        if (entryId.startsWith("pinned-tweets") && hidePinnedPosts) {
+            return true;
+        }
+        if (entryId.startsWith("messageprompt-") && hidePremiumPrompt) {
+            return true;
+        }
+        if (entryId2.equals("toptabsrpusermodule") && hideTopPeopleSearch) {
+            return true;
+        }
+        if (entryId.startsWith("stories") && hideTodaysNews) {
+            return true;
+        }
+        return false;
+    }
+
+    private static final Map<Class<?>, Field[]> FIELD_CACHE = new ConcurrentHashMap<>();
+    private static final int PROMOTED_SCAN_DEPTH = 4;
+
+    private static boolean isPromotedTypeName(String name) {
+        if (name == null) {
+            return false;
+        }
+        String n = name.toLowerCase(Locale.ROOT);
+        if (n.contains("quickpromote") || n.contains("promotebutton") || n.contains("eligibility")) {
+            return false;
+        }
+        return n.contains("promotedmetadata")
+            || n.contains("promotedtrend")
+            || n.contains("promotedcontent")
+            || n.contains("advertisermetadata")
+            || n.contains("searchad")
+            || (n.contains("promoted") && (n.contains("json") || n.contains("metadata") || n.contains("ad")));
+    }
+
+    private static boolean shouldScanType(Class<?> cls) {
+        if (cls == null || cls.isPrimitive() || cls.isEnum()) {
+            return false;
+        }
+        String name = cls.getName();
+        return name.startsWith("com.twitter.model.json")
+            || name.startsWith("com.twitter.api.model.json")
+            || name.startsWith("com.x.models");
+    }
+
+    private static boolean hasPromotedMetadata(Object obj, int depth) {
+        if (obj == null || depth > PROMOTED_SCAN_DEPTH) {
+            return false;
+        }
+        if (obj instanceof Collection<?> collection) {
+            for (Object item : collection) {
+                if (hasPromotedMetadata(item, depth + 1)) {
+                    return true;
+                }
             }
-            if ((entryId2.equals("superhero") || entryId2.equals("eventsummary")) && hideAds) {
-                return true;
+            return false;
+        }
+        if (obj instanceof Map<?, ?> map) {
+            for (Object item : map.values()) {
+                if (hasPromotedMetadata(item, depth + 1)) {
+                    return true;
+                }
             }
-            if (entryId.contains("rtb") && hideAds) {
-                return true;
+            return false;
+        }
+        if (obj.getClass().isArray()) {
+            return false;
+        }
+        Class<?> cls = obj.getClass();
+        if (isPromotedTypeName(cls.getName())) {
+            return true;
+        }
+        if (!shouldScanType(cls)) {
+            return false;
+        }
+        Field[] fields = FIELD_CACHE.computeIfAbsent(cls, Class::getDeclaredFields);
+        for (Field field : fields) {
+            Class<?> type = field.getType();
+            boolean typeLooksPromoted = isPromotedTypeName(type.getName())
+                || isPromotedTypeName(field.getName());
+            if (!typeLooksPromoted && !shouldScanType(type)
+                && !Collection.class.isAssignableFrom(type)
+                && !Map.class.isAssignableFrom(type)) {
+                continue;
             }
-            if (entryId2.startsWith("tweetdetail") && hideDetailedPosts) {
-                return true;
-            }
-            if (entryId2.equals("bookmarked") && hideRBMK) {
-                return true;
-            }
-            if (entryId.startsWith("community-to-join") && hideCTJ) {
-                return true;
-            }
-            if (entryId.startsWith("who-to-follow") && hideWTF) {
-                return true;
-            }
-            if (entryId.startsWith("who-to-subscribe") && hideCTS) {
-                return true;
-            }
-            if (entryId.startsWith("pinned-tweets") && hidePinnedPosts) {
-                return true;
-            }
-            if (entryId.startsWith("messageprompt-") && hidePremiumPrompt) {
-                return true;
-            }
-            if ((entryId.startsWith("main-event-") || entryId2.equals("pivot")) && hideAds) {
-                return true;
-            }
-            if (entryId2.equals("toptabsrpusermodule") && hideTopPeopleSearch) {
-                return true;
-            }
-            if (entryId.startsWith("stories") && hideTodaysNews) {
-                return true;
+            try {
+                field.setAccessible(true);
+                Object value = field.get(obj);
+                if (value == null) {
+                    continue;
+                }
+                if (typeLooksPromoted || isPromotedTypeName(value.getClass().getName())) {
+                    return true;
+                }
+                if (hasPromotedMetadata(value, depth + 1)) {
+                    return true;
+                }
+            } catch (Exception ignored) {
             }
         }
         return false;
     }
+
+    public static Object hideIfPromoted(Object data) {
+        if (!hideAds || data == null) {
+            return data;
+        }
+        return hasPromotedMetadata(data, 0) ? null : data;
+    }
+
+    public static Object filterPromotedFromTypeahead(Object response) {
+        if (!hideAds || response == null) {
+            return response;
+        }
+        try {
+            Field[] fields = FIELD_CACHE.computeIfAbsent(response.getClass(), Class::getDeclaredFields);
+            for (Field field : fields) {
+                field.setAccessible(true);
+                Object value = field.get(response);
+                if (value == null) {
+                    continue;
+                }
+                if (isPromotedTypeName(field.getType().getName()) || isPromotedTypeName(value.getClass().getName())) {
+                    field.set(response, null);
+                    continue;
+                }
+                if (value instanceof List<?> list) {
+                    try {
+                        list.removeIf(item -> item != null && hasPromotedMetadata(item, 0));
+                    } catch (UnsupportedOperationException ignored) {
+                        List<Object> filtered = new ArrayList<>(list.size());
+                        for (Object item : list) {
+                            if (item == null || !hasPromotedMetadata(item, 0)) {
+                                filtered.add(item);
+                            }
+                        }
+                        field.set(response, filtered);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return response;
+    }
+
     public static JsonTimelineEntry checkEntry(JsonTimelineEntry jsonTimelineEntry) {
         try {
-            String entryId = jsonTimelineEntry.a;
-            if (isEntryIdRemove(entryId)) {
+            if (jsonTimelineEntry == null) {
+                return null;
+            }
+            if (isEntryIdRemove(jsonTimelineEntry.a)) {
+                return null;
+            }
+            if (hideAds && hasPromotedMetadata(jsonTimelineEntry, 0)) {
                 return null;
             }
         } catch (Exception ignored) {
@@ -101,8 +260,13 @@ public class TimelineEntry {
     }
     public static JsonTimelineModuleItem checkEntry(JsonTimelineModuleItem jsonTimelineModuleItem) {
         try {
-            String entryId = jsonTimelineModuleItem.a;
-            if (isEntryIdRemove(entryId)) {
+            if (jsonTimelineModuleItem == null) {
+                return null;
+            }
+            if (isEntryIdRemove(jsonTimelineModuleItem.a)) {
+                return null;
+            }
+            if (hideAds && hasPromotedMetadata(jsonTimelineModuleItem, 0)) {
                 return null;
             }
         } catch (Exception ignored) {
