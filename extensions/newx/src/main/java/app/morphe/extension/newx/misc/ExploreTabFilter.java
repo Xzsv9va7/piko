@@ -23,8 +23,9 @@ import app.morphe.extension.newx.settings.NewXLogger;
  * UrpTimeline per Explore tab. An item is matched against a hidden tab through
  * every string it carries (title, timeline id, segmented timeline id and the
  * scribe page/section), so the exact server-side naming stays an
- * implementation detail. Matching is fail-open: on any error, or when every
- * tab would be removed, the original list is returned unchanged.
+ * implementation detail. Matching is fail-open on errors only: if filtering
+ * itself throws, the original list is returned unchanged. Hiding every tab
+ * is a valid choice and produces an empty list.
  */
 public final class ExploreTabFilter {
     private static final String SETTING_PREFIX = "newx.explore_tabs.hide_";
@@ -68,7 +69,7 @@ public final class ExploreTabFilter {
     }
 
     public static List filter(List tabs) {
-        if (tabs == null || tabs.size() < 2) return tabs;
+        if (tabs == null || tabs.isEmpty()) return tabs;
 
         try {
             List<TabRule> hidden = new ArrayList<>();
@@ -84,7 +85,7 @@ public final class ExploreTabFilter {
                 if (tab != null && isHidden(tab, hidden)) continue;
                 filtered.add(tab);
             }
-            if (filtered.isEmpty() || filtered.size() == tabs.size()) return tabs;
+            if (filtered.size() == tabs.size()) return tabs;
             return filtered;
         } catch (Exception exception) {
             NewXLogger.printException(() -> "Failed to customize NewX explore tabs", exception);
