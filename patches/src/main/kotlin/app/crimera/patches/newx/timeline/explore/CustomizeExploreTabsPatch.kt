@@ -4,7 +4,7 @@
  * See the included NOTICE file for GPLv3 §7(b) terms that apply to this code.
  */
 
-package app.crimera.patches.newx.misc.explore
+package app.crimera.patches.newx.timeline.explore
 
 import app.crimera.patches.common.requireExactlyOne
 import app.crimera.patches.newx.misc.extension.newXExtensionPatch
@@ -118,7 +118,7 @@ val customizeNewXExploreTabsPatch =
         dependsOn(newXExtensionPatch)
 
         newXSettings {
-            category(Categories.NAVIGATION) {
+            category(Categories.TIMELINE) {
                 group(Groups.EXPLORE_TABS) {
                     toggle(
                         id = "newx.explore_tabs.hide_for_you",

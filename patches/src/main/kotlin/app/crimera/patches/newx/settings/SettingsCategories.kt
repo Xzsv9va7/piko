@@ -80,7 +80,7 @@ internal object Groups {
 
     val EXPLORE_TABS =
         SettingsGroupMetadata(
-            id = "newx.navigation.explore_tabs",
+            id = "newx.timeline.explore_tabs",
             titleResourceName = "piko_newx_group_explore_tabs_title",
             summaryResourceName = "piko_newx_group_explore_tabs_summary",
             iconResourceName = "ic_vector_search_stroke",
